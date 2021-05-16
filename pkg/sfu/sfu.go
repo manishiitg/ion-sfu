@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/ion-sfu/pkg/etcd"
 	"github.com/pion/ion-sfu/pkg/relay"
 
 	"github.com/go-logr/logr"
@@ -220,6 +221,9 @@ func (s *SFU) newSession(id string) Session {
 		if s.withStats {
 			stats.Sessions.Dec()
 		}
+		if etcd.IsEtcd {
+			etcd.CloseSession(session.ID())
+		}
 	})
 
 	s.Lock()
@@ -228,6 +232,9 @@ func (s *SFU) newSession(id string) Session {
 
 	if s.withStats {
 		stats.Sessions.Inc()
+	}
+	if etcd.IsEtcd {
+		etcd.RegisterSession(session.ID())
 	}
 
 	return session
