@@ -185,6 +185,8 @@ func main() {
 
 	defer etcd.Close()
 
+	fmt.Println("gaddr", gaddr, "jaddr", jaddr)
+
 	node := server.New(conf.Config, logger)
 
 	if gaddr != "" {

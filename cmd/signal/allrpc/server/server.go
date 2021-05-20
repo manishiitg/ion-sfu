@@ -44,6 +44,7 @@ func New(c sfu.Config, logger logr.Logger) *Server { // Register default middlew
 func (s *Server) ServeGRPC(gaddr string) error {
 	l, err := net.Listen("tcp", gaddr)
 	if err != nil {
+		s.logger.Info("GRPC Error", "err", err)
 		return err
 	}
 
