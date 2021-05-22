@@ -64,7 +64,7 @@ func newRouter(id string, peer *webrtc.PeerConnection, session Session, config *
 		stats.Peers.Inc()
 	}
 	if etcd.IsEtcd {
-		etcd.RegisterSessionPeer(session.ID(), id)
+		go etcd.RegisterSessionPeer(session.ID(), id)
 	}
 
 	go r.sendRTCP()
@@ -82,7 +82,7 @@ func (r *router) Stop() {
 		stats.Peers.Dec()
 	}
 	if etcd.IsEtcd {
-		etcd.CloseSessionPeer(r.session.ID(), r.id)
+		go etcd.CloseSessionPeer(r.session.ID(), r.id)
 	}
 }
 
@@ -166,15 +166,10 @@ func (r *router) AddReceiver(receiver *webrtc.RTPReceiver, track *webrtc.TrackRe
 					stats.AudioTracks.Dec()
 				}
 			}
-			if track.Kind() == webrtc.RTPCodecTypeVideo {
-				if etcd.IsEtcd {
-					etcd.CloseSessionPeerTrack(r.session.ID(), r.id, track.ID(), "video")
-				}
-			} else {
-				if etcd.IsEtcd {
-					etcd.CloseSessionPeerTrack(r.session.ID(), r.id, track.ID(), "audio")
-				}
+			if etcd.IsEtcd {
+				go etcd.CloseSessionPeerTrack(r.session.ID(), r.id, track.ID(), track.Kind().String())
 			}
+
 			if recv.Kind() == webrtc.RTPCodecTypeAudio {
 				r.session.AudioObserver().removeStream(track.StreamID())
 			}
@@ -196,14 +191,9 @@ func (r *router) AddReceiver(receiver *webrtc.RTPReceiver, track *webrtc.TrackRe
 			stats.AudioTracks.Inc()
 		}
 	}
-	if track.Kind() == webrtc.RTPCodecTypeVideo {
-		if etcd.IsEtcd {
-			etcd.RegisterSessionPeerTrack(r.session.ID(), r.id, track.ID(), "video")
-		}
-	} else {
-		if etcd.IsEtcd {
-			etcd.RegisterSessionPeerTrack(r.session.ID(), r.id, track.ID(), "audio")
-		}
+
+	if etcd.IsEtcd {
+		go etcd.RegisterSessionPeerTrack(r.session.ID(), r.id, track.ID(), track.Kind().String())
 	}
 
 	return recv, publish

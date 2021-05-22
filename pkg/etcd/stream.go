@@ -2,8 +2,10 @@ package etcd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -23,6 +25,7 @@ type etcdCoordinator struct {
 	client       *clientv3.Client
 	kvc          clientv3.KV
 	lease        *clientv3.LeaseGrantResponse
+	mu           sync.Mutex
 }
 
 var etcdObj etcdCoordinator
@@ -67,17 +70,30 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 
 }
 
-func getHostLoad() string {
+type Load struct {
+	Cpu  float64 `json:"cpu"`
+	Mem  uint64  `json:"mem"`
+	Ip   string  `json:"ip"`
+	Port string  `json:"port"`
+}
+
+func getHostLoad() Load {
 	v, _ := mem.VirtualMemory()
-	// fmt.Printf("Total: %v, Free:%v, UsedPercent:%f%%\n", v.Total, v.Free, v.UsedPercent)
 	x, _ := cpu.Percent(time.Second, false)
-	// fmt.Println(x)
-	return fmt.Sprintf("%f-%f", v.UsedPercent, x[0])
+	load := Load{
+		Cpu:  x[0],
+		Mem:  v.Free,
+		Ip:   etcdObj.nodeIp,
+		Port: etcdObj.nodePort,
+	}
+	return load
 }
 
 func createHostLease() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 	defer cancel()
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	// First lets create a lease for the host
 	lease, err := etcdObj.client.Grant(ctx, 10) //10sec
 	if err != nil {
@@ -86,12 +102,15 @@ func createHostLease() {
 	}
 	etcdObj.lease = lease
 	etcdObj.globalLogger.Info("Got lease", "ID", lease.ID, "TTL", lease.TTL)
-	etcdObj.kvc.Put(ctx, "available-hosts/"+getHostKey(), getHostLoad(), clientv3.WithLease(lease.ID))
+	load := getHostLoad()
+	b, _ := json.Marshal(load)
+	etcdObj.kvc.Put(ctx, "available-hosts/"+getHostKey(), string(b), clientv3.WithLease(lease.ID))
 }
 
 func notifyAlive() {
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	if etcdObj.lease != nil {
-		getHostLoad()
 		leaseKeepAlive, err := etcdObj.client.KeepAlive(context.Background(), etcdObj.lease.ID)
 		if err != nil {
 			etcdObj.globalLogger.Error(err, "error activating keepAlive for lease", "leaseID", etcdObj.lease.ID)
@@ -105,12 +124,16 @@ func notifyAlive() {
 				// fmt.Println("ttl:", ka.TTL)
 			}
 		}()
-		etcdObj.kvc.Put(context.Background(), "available-hosts/"+getHostKey(), getHostLoad(), clientv3.WithLease(etcdObj.lease.ID))
+		load := getHostLoad()
+		b, _ := json.Marshal(load)
+		etcdObj.kvc.Put(context.Background(), "available-hosts/"+getHostKey(), string(b), clientv3.WithLease(etcdObj.lease.ID))
 		// etcdObj.globalLogger.Info("Host Alive", "leaseKeepAlive", <-leaseKeepAlive)
 	}
 }
 
 func Close() {
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	if IsEtcd {
 		etcdObj.client.Close()
 	}
@@ -125,14 +148,16 @@ func RegisterSession(session string) {
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	value := getHostKey()
-	key := fmt.Sprintf("/session/%v", session)
-	etcdObj.globalLogger.Info("Regsiter Session:", "key", key, "Value", value)
-	resp, _ := kvc.Put(ctx, key, value)
-	rev := resp.Header.Revision
-	etcdObj.globalLogger.Info("Register Session:", "rev", rev)
+	// key := fmt.Sprintf("/session/%v", session)
+	// etcdObj.globalLogger.Info("Regsiter Session:", "key", key, "Value", value)
+	// resp, _ := kvc.Put(ctx, key, value)
+	// rev := resp.Header.Revision
+	// etcdObj.globalLogger.Info("Register Session:", "rev", rev)
 	key2 := fmt.Sprintf("/session/%v/node/%v", session, value)
 	kvc.Put(ctx, key2, "")
 
@@ -142,6 +167,8 @@ func CloseSession(session string) {
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	key := fmt.Sprintf("/session/%v", session)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -157,6 +184,8 @@ func RegisterSessionPeer(session string, peerid string) {
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	value := getHostKey()
@@ -170,6 +199,8 @@ func CloseSessionPeer(session string, peerid string) {
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	value := getHostKey()
 	key := fmt.Sprintf("/session/%v/node/%v/peer/%v", session, value, peerid)
@@ -183,6 +214,8 @@ func RegisterSessionPeerTrack(session string, peerid string, trackid string, tra
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	value := getHostKey()
@@ -196,6 +229,8 @@ func CloseSessionPeerTrack(session string, peerid string, trackid string, trackT
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	value := getHostKey()
@@ -209,6 +244,8 @@ func TestKV() {
 	if !IsEtcd {
 		return
 	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	resp, err := kvc.Put(ctx, "sample_key", "sample_value")
