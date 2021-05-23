@@ -54,7 +54,7 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 
 	createHostLease()
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	quit := make(chan struct{})
 	go func() {
 		for {
@@ -72,7 +72,7 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 
 type Load struct {
 	Cpu  float64 `json:"cpu"`
-	Mem  uint64  `json:"mem"`
+	Mem  float64 `json:"mem"`
 	Ip   string  `json:"ip"`
 	Port string  `json:"port"`
 }
@@ -82,7 +82,7 @@ func getHostLoad() Load {
 	x, _ := cpu.Percent(time.Second, false)
 	load := Load{
 		Cpu:  x[0],
-		Mem:  v.Free,
+		Mem:  v.UsedPercent,
 		Ip:   etcdObj.nodeIp,
 		Port: etcdObj.nodePort,
 	}
@@ -120,8 +120,7 @@ func notifyAlive() {
 		go func() {
 			for {
 				<-leaseKeepAlive
-				// ka := <-leaseKeepAlive
-				// fmt.Println("ttl:", ka.TTL)
+				return
 			}
 		}()
 		load := getHostLoad()
@@ -177,6 +176,30 @@ func CloseSession(session string) {
 	value := getHostKey()
 	key2 := fmt.Sprintf("/session/%v/node/%v", session, value)
 	kvc.Delete(ctx, key2)
+	cancel()
+}
+
+var sessionlease map[string]clientv3.LeaseGrantResponse
+
+func CurrentSessionPeer(stats map[string][]string) {
+	if !IsEtcd {
+		return
+	}
+	etcdObj.mu.Lock()
+	defer etcdObj.mu.Unlock()
+	kvc := etcdObj.kvc
+	// First lets create a lease for the host
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	lease, err := etcdObj.client.Grant(ctx, 10) //10sec
+	if err != nil {
+		etcdObj.globalLogger.Error(err, "error acquiring lease for session key")
+		return
+	}
+	value := getHostKey()
+	key := fmt.Sprintf("/current_session_map/node/%v", value)
+	b, _ := json.Marshal(stats)
+	// etcdObj.globalLogger.Info("string(b) %v", string(b))
+	kvc.Put(ctx, key, string(b), clientv3.WithLease(lease.ID))
 	cancel()
 }
 
