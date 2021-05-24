@@ -120,7 +120,6 @@ func notifyAlive() {
 		go func() {
 			for {
 				<-leaseKeepAlive
-				return
 			}
 		}()
 		load := getHostLoad()
@@ -189,17 +188,18 @@ func CurrentSessionPeer(stats map[string][]string) {
 	defer etcdObj.mu.Unlock()
 	kvc := etcdObj.kvc
 	// First lets create a lease for the host
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	lease, err := etcdObj.client.Grant(ctx, 10) //10sec
-	if err != nil {
-		etcdObj.globalLogger.Error(err, "error acquiring lease for session key")
-		return
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	// lease, err := etcdObj.client.Grant(ctx, 10) //10sec
+	// if err != nil {
+	// 	etcdObj.globalLogger.Error(err, "error acquiring lease for session key")
+	// 	return
+	// }
 	value := getHostKey()
 	key := fmt.Sprintf("/current_session_map/node/%v", value)
 	b, _ := json.Marshal(stats)
 	// etcdObj.globalLogger.Info("string(b) %v", string(b))
-	kvc.Put(ctx, key, string(b), clientv3.WithLease(lease.ID))
+	// kvc.Put(ctx, key, string(b), clientv3.WithLease(lease.ID))
+	kvc.Put(ctx, key, string(b)) //lease not needed as just watching for new PUT not old data
 	cancel()
 }
 

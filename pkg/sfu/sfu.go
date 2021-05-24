@@ -234,7 +234,7 @@ func NewSFU(c Config) *SFU {
 }
 
 func sendSessionStats(sfu *SFU) {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
