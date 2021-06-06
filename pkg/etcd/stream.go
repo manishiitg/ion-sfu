@@ -17,8 +17,9 @@ import (
 
 var IsEtcd bool = false
 
-const LEAVE_TIMEOUT = 10
-const LEAVE_RENEW_TIMEOUT = 5 //lease renuew timeout should be less then lese timeout always
+const LEASE_TIMEOUT = 5
+const LEASE_RENEW_TIMEOUT = 1 //lease renuew timeout should be less then lese timeout always
+// 1sec is better as we get to know of host load every 1sec
 
 type etcdCoordinator struct {
 	nodeIp       string
@@ -57,7 +58,7 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 
 	createHostLease()
 
-	ticker := time.NewTicker(LEAVE_RENEW_TIMEOUT * time.Second)
+	ticker := time.NewTicker(LEASE_RENEW_TIMEOUT * time.Second)
 	quit := make(chan struct{})
 	go func() {
 		for {
@@ -93,12 +94,12 @@ func getHostLoad() Load {
 }
 
 func createHostLease() {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*LEAVE_TIMEOUT)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	etcdObj.mu.Lock()
 	defer etcdObj.mu.Unlock()
 	// First lets create a lease for the host
-	lease, err := etcdObj.client.Grant(ctx, 10) //10sec
+	lease, err := etcdObj.client.Grant(ctx, LEASE_TIMEOUT) //10sec
 	if err != nil {
 		etcdObj.globalLogger.Error(err, "error acquiring lease for session key")
 		return
@@ -118,7 +119,7 @@ func notifyAlive() {
 		if err != nil {
 			etcdObj.globalLogger.Error(err, "error activating keepAlive for lease", "leaseID", etcdObj.lease.ID)
 		}
-		etcdObj.globalLogger.Info("leaseKeepAlive err %v", leaseKeepAlive)
+		// etcdObj.globalLogger.Info("leaseKeepAlive err %v", leaseKeepAlive)
 
 		// === === see here
 		go func() {
@@ -128,17 +129,19 @@ func notifyAlive() {
 		}()
 		load := getHostLoad()
 		b, _ := json.Marshal(load)
+		// etcdObj.globalLogger.Info("host load %v", string(b))
 		resp, err := etcdObj.kvc.Put(context.Background(), "available-hosts/"+getHostKey(), string(b), clientv3.WithLease(etcdObj.lease.ID))
 		if err != nil {
+			etcdObj.globalLogger.Info("resp v=%v", resp)
 			etcdObj.globalLogger.Error(err, "err")
 			etcdObj.globalLogger.Info("lease id %v", etcdObj.lease.ID)
 			errstr := fmt.Sprintf("%v", err)
+			etcdObj.globalLogger.Info("errstr %v", errstr)
 			if strings.Index(errstr, "requested lease not found") != -1 {
 				etcdObj.globalLogger.Info("lease not found maybe server was restarted, will get new lease")
 				etcdObj.lease = nil
 			}
 		}
-		etcdObj.globalLogger.Info("resp", resp)
 		// etcdObj.globalLogger.Info("Host Alive", "leaseKeepAlive", <-leaseKeepAlive)
 	} else {
 		go createHostLease()
