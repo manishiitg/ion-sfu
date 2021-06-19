@@ -115,18 +115,18 @@ func notifyAlive() {
 	etcdObj.mu.Lock()
 	defer etcdObj.mu.Unlock()
 	if etcdObj.lease != nil {
-		leaseKeepAlive, err := etcdObj.client.KeepAlive(context.Background(), etcdObj.lease.ID)
+		_, err := etcdObj.client.KeepAliveOnce(context.Background(), etcdObj.lease.ID) //leaseKeepAlive
 		if err != nil {
 			etcdObj.globalLogger.Error(err, "error activating keepAlive for lease", "leaseID", etcdObj.lease.ID)
 		}
 		// etcdObj.globalLogger.Info("leaseKeepAlive err %v", leaseKeepAlive)
 
 		// === === see here
-		go func() {
-			for {
-				<-leaseKeepAlive
-			}
-		}()
+		// go func() {
+		// 	for {
+		// 		<-leaseKeepAlive
+		// 	}
+		// }()
 		load := getHostLoad()
 		b, _ := json.Marshal(load)
 		// etcdObj.globalLogger.Info("host load %v", string(b))
