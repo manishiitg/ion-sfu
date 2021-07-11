@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/pion/ion-sfu/pkg/etcd"
+	"github.com/pion/ion-sfu/pkg/ip"
 )
 
 // logC need to get logger options from config
@@ -156,9 +157,12 @@ func main() {
 
 	if eaddr != "" {
 		if ipaddr == "" {
-			fmt.Println("ipaddr mandatory if eaddr provided")
-			showHelp()
-			os.Exit(-1)
+			ipaddr = ip.GetIP()
+			if ipaddr == "" {
+				fmt.Println("ipaddr mandatory if eaddr provided")
+				showHelp()
+				os.Exit(-1)
+			}
 		}
 		var port string = addr
 		var ntype string = "jsonrpc"

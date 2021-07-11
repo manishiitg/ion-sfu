@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/pion/ion-sfu/pkg/etcd"
+	"github.com/pion/ion-sfu/pkg/ip"
 )
 
 type grpcConfig struct {
@@ -168,9 +169,13 @@ func main() {
 
 	if eaddr != "" {
 		if ipaddr == "" {
-			fmt.Println("ipaddr mandatory if eaddr provided")
-			showHelp()
-			os.Exit(-1)
+			fmt.Printf("trying to find ip...")
+			ipaddr = ip.GetIP()
+			if ipaddr == "" {
+				fmt.Println("ipaddr mandatory if eaddr provided")
+				showHelp()
+				os.Exit(-1)
+			}
 		}
 		var port string = addr
 		var ntype string = "grpc"

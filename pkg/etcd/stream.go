@@ -25,6 +25,7 @@ type etcdCoordinator struct {
 	nodeIp       string
 	nodePort     string
 	nodeType     string
+	domain       string
 	globalLogger logr.Logger
 	client       *clientv3.Client
 	kvc          clientv3.KV
@@ -34,7 +35,7 @@ type etcdCoordinator struct {
 
 var etcdObj etcdCoordinator
 
-func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger logr.Logger) {
+func InitEtcd(eaddr string, ipaddr string, port string, ntype string, domain string, logger logr.Logger) {
 	cli, err := clientv3.New(clientv3.Config{
 		Endpoints:   []string{eaddr},
 		DialOptions: []grpc.DialOption{grpc.WithBlock()},
@@ -44,13 +45,14 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 		logger.Error(err, "unable to connect to etcd")
 		return
 	}
-	logger.Info("etcd client connected", "eaddr", eaddr, "ipaddr", ipaddr, "port", port, "ntype", ntype)
+	logger.Info("etcd client connected", "eaddr", eaddr, "ipaddr", ipaddr, "port", port, "ntype", ntype, "domain", domain)
 	IsEtcd = true
 	kvc := clientv3.NewKV(cli)
 	etcdObj = etcdCoordinator{
 		client:       cli,
 		nodeIp:       ipaddr,
 		nodePort:     port,
+		domain:       domain,
 		nodeType:     ntype,
 		globalLogger: logger,
 		kvc:          kvc,
@@ -75,20 +77,22 @@ func InitEtcd(eaddr string, ipaddr string, port string, ntype string, logger log
 }
 
 type Load struct {
-	Cpu  float64 `json:"cpu"`
-	Mem  float64 `json:"mem"`
-	Ip   string  `json:"ip"`
-	Port string  `json:"port"`
+	Cpu    float64 `json:"cpu"`
+	Mem    float64 `json:"mem"`
+	Ip     string  `json:"ip"`
+	Port   string  `json:"port"`
+	Domain string  `json:domain`
 }
 
 func getHostLoad() Load {
 	v, _ := mem.VirtualMemory()
 	x, _ := cpu.Percent(time.Second, false)
 	load := Load{
-		Cpu:  x[0],
-		Mem:  v.UsedPercent,
-		Ip:   etcdObj.nodeIp,
-		Port: etcdObj.nodePort,
+		Cpu:    x[0],
+		Mem:    v.UsedPercent,
+		Ip:     etcdObj.nodeIp,
+		Port:   etcdObj.nodePort,
+		Domain: etcdObj.domain,
 	}
 	return load
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/pion/ion-sfu/pkg/etcd"
+	"github.com/pion/ion-sfu/pkg/ip"
 )
 
 var (
@@ -19,6 +20,7 @@ var (
 	key                        string
 	ipaddr, eaddr              string
 	gaddr, jaddr, paddr, maddr string
+	domain                     string
 	verbosityLevel             int
 	logger                     = log.New()
 )
@@ -96,6 +98,7 @@ func parse() bool {
 	flag.StringVar(&maddr, "maddr", "", "metrics listening address")
 	flag.StringVar(&eaddr, "eaddr", "", "eaddr listening address ipaddr is mandatory")
 	flag.StringVar(&ipaddr, "ipaddr", "", "host ip address")
+	flag.StringVar(&domain, "domain", "", "domain name")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
@@ -123,11 +126,6 @@ func parse() bool {
 	if ipaddr == "" {
 		ipaddr = getEnv("ipaddr")
 	}
-
-	if eaddr != "" && ipaddr == "" {
-		return false
-	}
-
 	// at least set one
 	if gaddr == "" && jaddr == "" {
 		return false
@@ -165,9 +163,13 @@ func main() {
 
 	if eaddr != "" {
 		if ipaddr == "" {
-			fmt.Println("ipaddr mandatory if eaddr provided")
-			showHelp()
-			os.Exit(-1)
+			fmt.Printf("trying to find ip...")
+			ipaddr = ip.GetIP()
+			if ipaddr == "" {
+				fmt.Println("ipaddr mandatory if eaddr provided")
+				showHelp()
+				os.Exit(-1)
+			}
 		}
 		var port string = ""
 		var ntype string = ""
@@ -179,7 +181,7 @@ func main() {
 			port = jaddr
 			ntype = "jsonrpc"
 		}
-		etcd.InitEtcd(eaddr, ipaddr, port, ntype, logger)
+		etcd.InitEtcd(eaddr, ipaddr, port, ntype, domain, logger)
 		// etcd.TestKV()
 	}
 
