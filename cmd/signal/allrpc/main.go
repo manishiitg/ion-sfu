@@ -9,13 +9,18 @@ import (
 	log "github.com/pion/ion-sfu/pkg/logger"
 	"github.com/pion/ion-sfu/pkg/sfu"
 	"github.com/spf13/viper"
+
+	"github.com/pion/ion-sfu/pkg/etcd"
+	"github.com/pion/ion-sfu/pkg/ip"
 )
 
 var (
 	file                       string
 	cert                       string
 	key                        string
+	ipaddr, eaddr              string
 	gaddr, jaddr, paddr, maddr string
+	domain                     string
 	verbosityLevel             int
 	logger                     = log.New()
 )
@@ -91,6 +96,9 @@ func parse() bool {
 	flag.StringVar(&gaddr, "gaddr", "", "grpc listening address")
 	flag.StringVar(&paddr, "paddr", "", "pprof listening address")
 	flag.StringVar(&maddr, "maddr", "", "metrics listening address")
+	flag.StringVar(&eaddr, "eaddr", "", "eaddr listening address ipaddr is mandatory")
+	flag.StringVar(&ipaddr, "ipaddr", "", "host ip address")
+	flag.StringVar(&domain, "domain", "", "domain name")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
@@ -111,6 +119,13 @@ func parse() bool {
 		maddr = getEnv("maddr")
 	}
 
+	if eaddr == "" {
+		eaddr = getEnv("eaddr")
+	}
+
+	if ipaddr == "" {
+		ipaddr = getEnv("ipaddr")
+	}
 	// at least set one
 	if gaddr == "" && jaddr == "" {
 		return false
@@ -145,6 +160,34 @@ func main() {
 	}
 
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
+
+	if eaddr != "" {
+		if ipaddr == "" {
+			fmt.Printf("trying to find ip...")
+			ipaddr = ip.GetIP()
+			if ipaddr == "" {
+				fmt.Println("ipaddr mandatory if eaddr provided")
+				showHelp()
+				os.Exit(-1)
+			}
+		}
+		var port string = ""
+		var ntype string = ""
+		if gaddr != "" {
+			port = gaddr
+			ntype = "grpc"
+		}
+		if jaddr != "" {
+			port = jaddr
+			ntype = "jsonrpc"
+		}
+		etcd.InitEtcd(eaddr, ipaddr, port, ntype, domain, logger)
+		// etcd.TestKV()
+	}
+
+	defer etcd.Close()
+
+	fmt.Println("gaddr", gaddr, "jaddr", jaddr)
 
 	node := server.New(conf.Config, logger)
 

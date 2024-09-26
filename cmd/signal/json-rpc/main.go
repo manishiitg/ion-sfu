@@ -18,6 +18,9 @@ import (
 	"github.com/sourcegraph/jsonrpc2"
 	websocketjsonrpc2 "github.com/sourcegraph/jsonrpc2/websocket"
 	"github.com/spf13/viper"
+
+	"github.com/pion/ion-sfu/pkg/etcd"
+	"github.com/pion/ion-sfu/pkg/ip"
 )
 
 // logC need to get logger options from config
@@ -28,6 +31,7 @@ type logC struct {
 var (
 	conf           = sfu.Config{}
 	file           string
+	ipaddr, eaddr  string
 	cert           string
 	key            string
 	addr           string
@@ -102,6 +106,8 @@ func parse() bool {
 	flag.StringVar(&addr, "a", ":7000", "address to use")
 	flag.StringVar(&metricsAddr, "m", ":8100", "merics to use")
 	flag.IntVar(&verbosityLevel, "v", -1, "verbosity level, higher value - more logs")
+	flag.StringVar(&eaddr, "eaddr", "", "eaddr listening address ipaddr is mandatory")
+	flag.StringVar(&ipaddr, "ipaddr", "", "host ip address")
 	help := flag.Bool("h", false, "help info")
 	flag.Parse()
 	if !load() {
@@ -148,6 +154,23 @@ func main() {
 	}
 
 	log.SetGlobalOptions(log.GlobalConfig{V: verbosityLevel})
+
+	if eaddr != "" {
+		if ipaddr == "" {
+			ipaddr = ip.GetIP()
+			if ipaddr == "" {
+				fmt.Println("ipaddr mandatory if eaddr provided")
+				showHelp()
+				os.Exit(-1)
+			}
+		}
+		var port string = addr
+		var ntype string = "jsonrpc"
+		etcd.InitEtcd(eaddr, ipaddr, port, ntype, logger)
+		// etcd.TestKV()
+	}
+
+	defer etcd.Close()
 	logger.Info("--- Starting SFU Node ---")
 
 	// Pass logr instance

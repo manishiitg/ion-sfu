@@ -3,6 +3,8 @@ package sfu
 import (
 	"sync"
 
+	"github.com/pion/ion-sfu/pkg/etcd"
+
 	"github.com/pion/ion-sfu/pkg/buffer"
 	"github.com/pion/ion-sfu/pkg/stats"
 	"github.com/pion/ion-sfu/pkg/twcc"
@@ -61,6 +63,9 @@ func newRouter(id string, peer *webrtc.PeerConnection, session Session, config *
 	if config.Router.WithStats {
 		stats.Peers.Inc()
 	}
+	if etcd.IsEtcd {
+		go etcd.RegisterSessionPeer(session.ID(), id)
+	}
 
 	go r.sendRTCP()
 	return r
@@ -75,6 +80,9 @@ func (r *router) Stop() {
 
 	if r.config.WithStats {
 		stats.Peers.Dec()
+	}
+	if etcd.IsEtcd {
+		go etcd.CloseSessionPeer(r.session.ID(), r.id)
 	}
 }
 
@@ -158,6 +166,10 @@ func (r *router) AddReceiver(receiver *webrtc.RTPReceiver, track *webrtc.TrackRe
 					stats.AudioTracks.Dec()
 				}
 			}
+			if etcd.IsEtcd {
+				go etcd.CloseSessionPeerTrack(r.session.ID(), r.id, track.ID(), track.Kind().String())
+			}
+
 			if recv.Kind() == webrtc.RTPCodecTypeAudio {
 				r.session.AudioObserver().removeStream(track.StreamID())
 			}
@@ -178,6 +190,10 @@ func (r *router) AddReceiver(receiver *webrtc.RTPReceiver, track *webrtc.TrackRe
 		} else {
 			stats.AudioTracks.Inc()
 		}
+	}
+
+	if etcd.IsEtcd {
+		go etcd.RegisterSessionPeerTrack(r.session.ID(), r.id, track.ID(), track.Kind().String())
 	}
 
 	return recv, publish

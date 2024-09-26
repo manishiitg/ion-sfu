@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/ion-sfu/pkg/etcd"
+
 	"github.com/pion/ion-sfu/pkg/relay"
 
 	"github.com/go-logr/logr"
@@ -220,7 +222,31 @@ func NewSFU(c Config) *SFU {
 	}
 
 	runtime.KeepAlive(ballast)
+
+	if etcd.IsEtcd {
+		go sendSessionStats(sfu)
+	}
 	return sfu
+}
+
+func sendSessionStats(sfu *SFU) {
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			var stats = make(map[string][]string)
+			sessions := sfu.GetSessions()
+			for _, session := range sessions {
+				peers := session.Peers()
+				stats[session.ID()] = []string{}
+				for _, peer := range peers {
+					stats[session.ID()] = append(stats[session.ID()], peer.ID())
+				}
+			}
+			etcd.CurrentSessionPeer(stats)
+		}
+	}
+
 }
 
 // NewSession creates a new SessionLocal instance
@@ -235,6 +261,9 @@ func (s *SFU) newSession(id string) Session {
 		if s.withStats {
 			stats.Sessions.Dec()
 		}
+		if etcd.IsEtcd {
+			etcd.CloseSession(session.ID())
+		}
 	})
 
 	s.Lock()
@@ -243,6 +272,9 @@ func (s *SFU) newSession(id string) Session {
 
 	if s.withStats {
 		stats.Sessions.Inc()
+	}
+	if etcd.IsEtcd {
+		etcd.RegisterSession(session.ID())
 	}
 
 	return session
